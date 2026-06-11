@@ -1,5 +1,5 @@
 # Environments
-venv/
+ven/
 env/
 .env
 
@@ -18,4 +18,4 @@ data/models/*
 !data/models/.gitkeep
 
 # VS Code specific
-.vscode/
+.vscode/ven/
