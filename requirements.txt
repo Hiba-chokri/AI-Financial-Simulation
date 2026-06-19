@@ -1,0 +1,19 @@
+# Web Framework & Server
+fastapi==0.109.2
+uvicorn==0.27.1
+pydantic==2.6.1
+
+# Data Ingestion & Scraping
+playwright==1.41.2
+beautifulsoup4==4.12.3
+
+# Data Manipulation & AI
+pandas==2.2.0
+numpy==1.26.4
+scikit-learn==1.4.0
+xgboost==2.0.3
+
+# Database & Environment
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.25
+python-dotenv==1.0.1
