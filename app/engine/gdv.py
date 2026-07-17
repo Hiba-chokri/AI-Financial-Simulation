@@ -1,18 +1,18 @@
 """
-Submodel C: GDV (Gross Development Value) valuation.
+GDV (Gross Development Value) — Casablanca neighborhood lookup (fallback valuator).
+
+The live valuation path is the ML pipeline in `app/ml/` (King County data). This module
+is the deterministic FALLBACK the API uses when the ML model is unavailable, and the
+source of Casablanca-specific price/m2 medians.
 
 The Casablanca dataset collapses to ~17 unique price points across 12 neighborhoods
-(each row duplicated ~187x), so a learned regressor (XGBoost/RandomForest) is not
-statistically justified -- it would only memorize and leak across a train/test split.
+(each row duplicated ~187x), so a learned regressor is not statistically justified there
+-- it would only memorize and leak across a train/test split. Instead this is an honest,
+transparent **price-per-m2 lookup table**: the median MAD/m2 per neighborhood, with a
+city-wide median fallback for unseen neighborhoods.
 
-Instead this builds an honest, transparent **price-per-m2 lookup table**: the median
-MAD/m2 per neighborhood, with a city-wide median fallback for unseen neighborhoods.
-The public interface (`estimate_gdv`) is intentionally identical to what a real model
-would expose, so the internals can be swapped for ML once Phase 2 brings real data.
-
-Note: `type` (Studio/Appartement/Bureau) is intentionally excluded -- in this data it is
-confounded with unit size (small studios inflate MAD/m2), which would bias a development
-valuation. Neighborhood is the stable signal we trust.
+The lookup is normally read from a prebuilt JSON (`load_lookup`); `train_from_dataset`
+only rebuilds it from the legacy Casablanca CSV and is not part of the live request path.
 """
 import json
 import os
@@ -85,7 +85,20 @@ def estimate_gdv(
 
 
 def train_from_dataset(csv_path: str = "data/raw/Housing_data.csv") -> Dict[str, object]:
-    """Loads + cleans the dataset, builds the lookup, and persists it."""
+    """
+    (Re)build the Casablanca median lookup from the raw Casablanca CSV and persist it.
+
+    NOTE: this depends on the legacy Casablanca dataset (`Housing_data.csv`), which is
+    NOT the King County dataset the ML pipeline now uses. The prebuilt lookup at
+    LOOKUP_PATH is normally loaded directly via `load_lookup()`; this rebuild path only
+    runs if that JSON is missing. If the CSV is absent it fails with a clear message
+    rather than a cryptic pandas error.
+    """
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(
+            f"Cannot rebuild the Casablanca lookup: '{csv_path}' is not present. "
+            f"The prebuilt lookup at '{LOOKUP_PATH}' should be used instead."
+        )
     df = ingest_kaggle_dataset(csv_path)
     if df is None:
         raise RuntimeError(f"Could not load dataset at {csv_path}")

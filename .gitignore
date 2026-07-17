@@ -16,6 +16,10 @@ data/raw/*
 data/models/*
 !data/raw/.gitkeep
 !data/models/.gitkeep
+# Committed exceptions: the KC training CSV (2.5 MB — lets CI train from a bare
+# clone) and the tiny Casablanca lookup JSON (the API's GDV fallback).
+!data/raw/kc_house_data.csv
+!data/models/gdv_price_per_m2.json
 
 # VS Code specific
 .vscode/ven/

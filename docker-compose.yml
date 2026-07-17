@@ -1,0 +1,21 @@
+# Daba.Dar Financial Simulation API — local / single-host deployment.
+#
+#   docker compose up --build      start (rebuilds if the code changed)
+#   docker compose down            stop
+#
+# Requires a .env file at the project root (cp .env.example .env) — it supplies
+# the API keys and CORS origins. Model artifacts are read from ./data as a
+# read-only volume, so retraining never requires an image rebuild.
+
+services:
+  api:
+    build: .
+    image: daba-dar-api
+    container_name: daba-dar-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data:ro
+    restart: unless-stopped

@@ -1,8 +1,17 @@
+"""
+LEGACY — Casablanca dataset ingestion + feature prep for the neighborhood lookup.
+
+This is the Casablanca-specific data path. The live ML pipeline uses the
+config-driven equivalents in `app/ml/` (ingest.py + features.py) instead. This
+module is still used by `app/engine/gdv.py::train_from_dataset` to (re)build the
+Casablanca median lookup from the legacy `Housing_data.csv`, which is not part of
+the live request path. Prefer `app/ml/` for anything new.
+"""
 import pandas as pd
 from typing import Optional
 
-# --- Feature contract for Submodel C (GDV) ---
-# Shared so the model trainer and the inference path agree on columns.
+# --- Feature contract for the Casablanca GDV lookup ---
+# Shared so the lookup builder and the inference path agree on columns.
 TARGET: str = "price_per_m2"
 CATEGORICAL_FEATURES: list[str] = ["nighberd", "type"]
 NUMERIC_FEATURES: list[str] = [

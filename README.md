@@ -1,192 +1,267 @@
-# Daba.Dar — AI Financial Simulation Engine
+# Daba.Dar — AI Financial Simulation API
 
-A hyper-localized, AI-assisted **real-estate development financial simulator** for
-Casablanca, Morocco. Built as an isolated microservice that plugs into Daba.Dar's
-property listing cards (a Daba.Cities product).
+[![CI](https://github.com/Hiba-chokri/AI-Financial-Simulation/actions/workflows/ci.yml/badge.svg)](https://github.com/Hiba-chokri/AI-Financial-Simulation/actions/workflows/ci.yml)
 
-Given a piece of land, the engine autonomously designs a **legally-compliant building**
-under Casablanca urban-planning law, costs it out (Capex), estimates its **Gross
-Development Value (GDV)**, and reports the **net profit and margin** — turning complex
-developer math into an instant answer for non-specialist micro-investors.
-
----
-
-## 1. The Problem & The Solution
-
-- **Problem:** Real-estate development economics are complex, exclusive, and built for
-  professional developers. There is no fast, localized tool to show ordinary investors
-  whether building on a given plot is financially viable.
-- **Solution:** Input a plot (size, location, zoning, land price) → get instant,
-  scenario-based projections (acquisition + demolition + construction cost, GDV, profit
-  margin), with all the math hidden from the user.
-
----
-
-## 2. Architecture & Submodels
-
-The system is decomposed into four submodels (think of them as a pipeline):
-
-| Submodel | Name | Status | What it does |
-|----------|------|--------|--------------|
-| **A** | Data Ingestion | ✅ Done | Loads & cleans the Casablanca housing dataset (`app/scraper/cleaner.py`). |
-| **B** | Capex (Cost) Engine | ✅ Done | Designs a zoning-compliant building and itemizes all costs (`app/engine/capex.py`). |
-| **C** | GDV Valuation | ✅ Done (v1) | Estimates resale value per m² to compute GDV (`app/engine/gdv.py`). |
-| **D** | API Gateway + Validation | ⬜ Not started | FastAPI endpoint wrapping B+C, validated vs. 3 real listings. |
-
-Composition layer: `app/engine/valuation.py` ties **B + C** together into a full
-cost → GDV → profit breakdown.
-
-### Domain logic: Casablanca zoning law
-The Capex engine strictly enforces legal limits from the *Agence Urbaine de Casablanca*,
-encoded as a data-driven matrix in `app/engine/matrix.py`:
-
-- **CES** (*Coefficient d'Emprise au Sol*) — max ground footprint as a fraction of the plot.
-- **COS** (*Coefficient d'Occupation du Sol*) — max total floor area (vertical volume).
-- **Height caps** — e.g. Zone A/B dense → R+5, Zone D villa → R+1, Zone E commercial → R+6.
-
-The engine builds floors upward and **stops at whichever binds first** — the height cap or
-the COS ceiling — so it never proposes an illegal structure.
-
----
-
-## 3. Tech Stack
-
-- **Language:** Python 3.9
-- **Validation:** Pydantic (strict, fully dynamic financial inputs — zero hardcoded prices)
-- **Data:** Pandas
-- **Planned:** FastAPI + Uvicorn (Submodel D), PostgreSQL (production GIS zoning data)
-- **Installed but currently unused:** scikit-learn, xgboost — see the [data reality](#5-important-the-data-reality) note below.
-
----
-
-## 4. Project Structure
+A hyper-localized **real-estate development financial simulator**, built as a stateless
+**microservice** (a Daba.Cities product). Given a plot of land, it autonomously designs a
+zoning-compliant building, costs it end to end, estimates its market value, and returns the
+net profit and margin — as a single JSON API call any platform can consume.
 
 ```
-AI-Financial-Simulation/
-├── app/
-│   ├── api/                 # Submodel D — FastAPI layer (STUBS, not built yet)
-│   │   ├── routes.py
-│   │   └── schemas.py
-│   ├── database/            # PostgreSQL layer (STUBS, not built yet)
-│   │   ├── database.py
-│   │   └── models.py
-│   ├── engine/              # The financial core
-│   │   ├── matrix.py        # Casablanca CES/COS/height zoning rules
-│   │   ├── capex.py         # Submodel B — cost engine + building generator
-│   │   ├── gdv.py           # Submodel C — GDV price/m² valuation
-│   │   └── valuation.py     # Composition: Capex + GDV -> profit/margin
-│   └── scraper/
-│       ├── cleaner.py       # Submodel A — dataset ingestion + feature prep
-│       └── sarouty.py       # Legacy live scraper (superseded, see below)
-├── data/
-│   ├── raw/                 # Housing_data.csv lives here (gitignored)
-│   └── models/              # Generated GDV lookup artifact (gitignored)
-├── main.py                  # FastAPI entrypoint (empty — not built yet)
-├── requirements.txt
-└── .env.example
+plot + zoning + rates  ──►  [ Capex engine ]  ──►  Total Development Cost (TDC)
+location + unit specs   ──►  [ ML valuation ]  ──►  price/m² ──► GDV ──► NDV
+                                                              ──► net profit · margin · ROI
 ```
 
 ---
 
-## 5. IMPORTANT: The Data Reality
+## 1. What it does
 
-This is the single most important thing for a teammate to understand before trusting any
-output:
-
-- The data source is a **static Kaggle "Moroccan Housing" dataset** of **resale listings**
-  (existing finished apartments/villas), *not* land plots or new-build sales. This was a
-  deliberate **Phase-1 pivot** away from live scraping (`sarouty.py`) after Cloudflare
-  blocked the scrapers — it decouples the engine from network blockers so the math could be
-  built today.
-- After filtering to Casablanca, the dataset is **~3,179 rows but only 17 unique data
-  points** (each duplicated ~187× with different marketing text), spanning **12
-  neighborhoods**.
-- **Because of this, Submodel C is NOT a machine-learning model.** A regressor on 17 points
-  would just memorize and leak across a train/test split (fake R²≈1.0). Instead, Submodel C
-  is an honest, transparent **price-per-m² lookup table** (median MAD/m² per neighborhood,
-  with a city-wide median fallback). The `estimate_gdv()` interface is identical to what a
-  real model would expose, so the internals can be swapped for ML once real data arrives.
-
-### Consequences (treat outputs as a directional skeleton, not a calibrated valuation)
-- **Land price** has no data source — it is a **manual user input** (the listing's asking
-  price), by design.
-- GDV applies a generic neighborhood *resale* price to *new* build area with no new-build
-  premium adjustment, so margins skew optimistic.
-- **Submodel D's validation against 3 real listings (<10% variance) is the real test** of
-  whether the proxy holds.
+- **Designs a building** from a plot: enforces Casablanca CES/COS/height limits and stops at
+  whichever binds first, so it never proposes an illegal structure.
+- **Costs it fully** (TDC): land + demolition + construction (per level) + 5 soft-cost lines +
+  overheads + contingency.
+- **Values it**: predicts a price per m² (ML model), multiplies by the sellable area to get
+  **GDV**, then deducts selling costs to get **NDV** (Net Distributable Value).
+- **Reports the bottom line**: net profit (NDV − TDC), development margin, and ROI.
+- **Speaks three currencies**: all monetary outputs convert to MAD, USD, or EUR on request.
+- **Is secured**: API-key auth, CORS allowlist, and security headers on every response.
 
 ---
 
-## 6. Setup
+## 2. Architecture
+
+The service is a thin HTTP layer over two independent engines. No business logic lives in the
+API — it validates input, calls the engines, and serializes the result.
+
+```
+                       ┌─────────────────────────────┐
+   HTTP request  ─────►│  app/api  (routes, schemas, │
+                       │           security)         │
+                       └───────────────┬─────────────┘
+                                       │
+                 ┌─────────────────────┴────────────────────┐
+                 ▼                                           ▼
+      ┌───────────────────────┐                 ┌───────────────────────────┐
+      │  app/engine (Capex)   │                 │  app/ml  (price/m² model) │
+      │  cost of building     │                 │  XGBoost pipeline         │
+      │  matrix · capex ·     │                 │  + lookup fallback        │
+      │  currency · gdv-lookup│                 │  (app/engine/gdv.py)      │
+      └───────────────────────┘                 └───────────────────────────┘
+```
+
+### Folder map
+
+| Folder | Responsibility |
+|--------|----------------|
+| `app/api/`      | HTTP layer — `routes.py`, `schemas.py` (request/response contracts), `security.py` (API-key auth). |
+| `app/core/`     | Configuration — `config.py` reads keys / CORS origins / limits from the environment. |
+| `app/engine/`   | Deterministic financial math — `capex.py` (cost engine), `matrix.py` (zoning rules), `currency.py` (MAD→USD/EUR), `gdv.py` (Casablanca lookup, the ML fallback). |
+| `app/ml/`       | The price-per-m² model pipeline (ingest → validate → features → train → predict), driven entirely by `config.py`. |
+| `tests/`        | Pytest smoke tests (engine math + API security). |
+| `app/scraper/`  | **Legacy** — a superseded live scraper + Casablanca data prep. Not used by the live service (see §7). |
+| `app/database/` | **Placeholder** — a persistence layer for later; empty by design (the service is stateless). |
+
+---
+
+## 3. Tech stack
+
+- **Python 3.9**, **FastAPI** + **Uvicorn** (API), **Pydantic v2** (validation/contracts)
+- **scikit-learn** + **XGBoost** + **joblib** (ML), **pandas**/**numpy** (data)
+- **Streamlit** (local testing UI), **pytest** + **httpx** (tests)
+- **Docker** + **docker compose** (packaging/deployment)
+
+Dependencies are split: `requirements.txt` is the lean **runtime** set the Docker image
+installs; `requirements-dev.txt` adds the local tooling (Streamlit, matplotlib, pytest,
+legacy scraper).
+
+---
+
+## 4. Setup
 
 ```bash
-# 1. Create & activate a virtual environment (the repo uses a `ven/` folder)
-python3 -m venv ven
-source ven/bin/activate
+# 1. Create & activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Install dependencies (dev set = runtime + tests/Streamlit/plots)
+pip install -r requirements-dev.txt
 
-# 3. Get the dataset (gitignored — not in the repo)
-#    Place the Kaggle Moroccan Housing CSV at:
-#    data/raw/Housing_data.csv
+# 3. Configure the environment
+cp .env.example .env
+#    then edit .env:
+#      - generate an API key:  python -c "import secrets; print(secrets.token_urlsafe(32))"
+#      - set DABA_API_KEYS and DABA_ALLOWED_ORIGINS
 
-# 4. Configure environment
-cp .env.example .env   # then fill in DB credentials when Submodel D/DB are built
+# 4. Datasets & model artifacts are gitignored (not in the repo). To train the model:
+#    place the King County CSV at  data/raw/kc_house_data.csv  then:
+python -m app.ml.train
 ```
 
-> Note: `requirements.txt` version pins may drift from what's installed in an existing
-> `ven/`. If you hit a `ModuleNotFoundError`, run `pip install -r requirements.txt` again.
+> The trained model (`data/models/kc_pipeline.joblib`) and the Casablanca lookup
+> (`data/models/gdv_price_per_m2.json`) are gitignored. The API serves whichever it finds
+> and falls back gracefully; see §6.
 
 ---
 
-## 7. Running the Modules
+## 5. Running
 
-Each module is runnable standalone via its `__main__` block (there is no API server yet).
-Run from the project root so the `app.` package imports resolve:
+### The API — Docker (recommended for integration)
 
 ```bash
-# Submodel A — ingest + clean + feature-prep the dataset
-python -m app.scraper.cleaner
-
-# Submodel B — Capex engine (designs a building + itemizes costs)
-python -m app.engine.capex
-
-# Submodel C — build the GDV price/m² lookup (writes data/models/gdv_price_per_m2.json)
-python -m app.engine.gdv
-
-# Full valuation — Capex + GDV -> net profit & margin (sell-on-completion)
-python -m app.engine.valuation
+docker compose up --build
 ```
 
-Example output from `valuation.py` (500 m² plot, Zone A/B dense, Riviera):
+That's the whole deployment: it builds the image, injects `.env` (API keys, CORS), mounts
+`./data` read-only (so retraining never requires a rebuild), and serves on port 8000 with a
+container-level healthcheck. The image runs as a non-root user and contains no secrets, no
+datasets, and no dev tooling.
 
+### The API — bare Python (local development)
+
+```bash
+uvicorn main:app --reload          # or: ./run_api.sh
 ```
-GDV (revenue):    31,402,291 MAD
-Total investment: 13,122,625 MAD
-Net profit:       18,279,666 MAD
-Development margin: 58.2%   ROI: 139.3%
+
+- Interactive docs (Swagger): **http://localhost:8000/docs** — click **Authorize**, paste your
+  API key, then "Try it out".
+- Alternative docs (ReDoc): **http://localhost:8000/redoc**
+
+### Example request
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/simulate \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-key>" \
+  -d '{"plot_m2": 500, "land_price_mad": 4500000, "zone": "zone_e",
+       "neighborhood": "98052", "currency": "MAD"}'
+```
+
+Every field except the five above has a sensible default (see `app/api/schemas.py`).
+
+### The local testing UI
+
+```bash
+streamlit run streamlit_app.py
+```
+
+A dashboard that drives the engine directly (no API/key needed) — adjust any parameter and see
+the full TDC → GDV → NDV → profit breakdown. For the team, not end users.
+
+### The tests
+
+```bash
+pytest -q
+```
+
+The suite has three layers:
+
+| File | What it proves |
+|------|----------------|
+| `tests/test_capex_calculations.py` | The financial math, against **hand-calculated expected values** — every construction line, soft-cost line, overheads, TDC to the dirham; zoning-law enforcement (COS ceiling, penthouse rules); the GDV → NDV → profit chain and its edge cases. |
+| `tests/test_api_contract.py` | The HTTP contract an integrating platform codes against — validation (422s), full response schema, currency conversion on every monetary field, fallback behavior, and that the API returns *exactly* what a direct engine call computes. |
+| `tests/test_api.py` / `tests/test_engine.py` | Smoke tests: auth (401/413), health, currency table sanity. |
+
+Tests that need the gitignored ML artifact skip cleanly on a bare clone, so the suite
+passes everywhere — locally with a trained model, and in CI without one.
+
+### ML / data utilities
+
+```bash
+python -m app.ml.ingest         # preview the dataset (shape + first 10 rows)
+python -m app.ml.train          # train + evaluate models, save the winner
+python -m app.ml.quality_gate   # pass/fail check: is the trained model shippable?
+python -m app.ml.plot_metrics   # bar-chart comparison of the candidate models
+python -m app.ml.predict        # fallback-chain report across trained locations
 ```
 
 ---
 
-## 8. Roadmap
+## CI/CD (GitHub Actions)
 
-- **Phase C — Revenue/scenario layer:** add the remaining exit strategies (short-term/Airbnb,
-  long-term rental, hold-and-manage) with localized yields, beyond sell-on-completion.
-- **Phase D — Submodel D:** wrap Capex + GDV in a single FastAPI endpoint with a validation
-  guardrail against ≥3 real listed properties.
-- **Phase 2 data:** swap the static dataset for a live B2B/API data pipeline, and (only then)
-  reconsider a real ML valuation model.
-- **Infra:** PostgreSQL for production GIS zoning data; Docker for dev/prod parity.
+Two deliberately **separate** pipelines — code changes never retrain the model, and
+retraining never rebuilds the image (the container mounts `data/` at run time):
+
+- **`ci.yml` — code pipeline.** Every push/PR: install → full test suite → Docker image
+  build. A red ❌ blocks broken code from reaching `main`.
+- **`train.yml` — model pipeline (MLOps).** Manual trigger (Actions → *Train model* →
+  *Run workflow*), optional weekly schedule: trains the three candidate models, then a
+  **quality gate** (`app/ml/quality_gate.py`) refuses to publish any model with R² < 0.70
+  or MAPE > 20% — the pipeline cannot ship a degraded model. Passing artifacts
+  (`.joblib` + metadata + metrics chart) are uploaded to the workflow run, ready to be
+  dropped into `data/models/` of any deployment.
+
+The KC training CSV (2.5 MB) and the Casablanca lookup JSON are committed specifically so
+both pipelines work from a bare clone.
 
 ---
 
-## 9. Deliverables (project goals)
+## 6. Endpoints & security
 
-1. Financial simulation API integrated into Daba.Dar.
-2. Scenario comparison dashboard (rent / sell / hold).
-3. Validation report on 3 real property cases.
-4. Technical documentation & model-assumptions log.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET`  | `/`                       | public  | Service metadata. |
+| `GET`  | `/api/v1/health`          | public  | Liveness + whether the ML model is loaded. |
+| `GET`  | `/api/v1/neighborhoods`   | **key** | Locations the model was trained on. |
+| `POST` | `/api/v1/simulate`        | **key** | Full valuation: cost → GDV → NDV → profit. |
 
-> Current geographic and mathematical scope is **strictly Casablanca, Morocco**.
+**Security layers** (configured via `.env`, see `.env.example`):
+
+- **API key** — send `X-API-Key: <key>`; missing/invalid → `401`. Keys are compared in constant
+  time. `/health` stays public for monitoring.
+- **CORS** — only origins in `DABA_ALLOWED_ORIGINS` may call the API from a browser. Server-to-
+  server calls (recommended for integration) ignore CORS entirely.
+- **Hardening** — security headers on every response (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy`) and a request-body size cap.
+
+**GDV fallback:** if `gdv_method=ml` but no model is loaded, the API silently falls back to the
+Casablanca neighborhood lookup and reports `gdv_method: "lookup (ml_unavailable)"` in the
+response, so the caller always knows which valuator produced the number.
+
+---
+
+## 7. Important context for the team
+
+**Data reality (read before trusting any number).** The ML model is currently trained on **King
+County, WA** house data (`kc_house_data.csv`, ~21k rows) — a large, clean dataset used as a
+**proxy** to build and validate the pipeline. It is *not* Moroccan data. Until it is replaced,
+the *combined* profit/margin is directional plumbing, not a calibrated valuation: the cost side
+is Casablanca MAD while the ML price side is King County USD/sqft. Swapping the dataset is a
+config + retrain, not a code change (`app/ml/config.py`).
+
+**Legacy code (kept, not live).**
+- `app/scraper/sarouty.py` — a Playwright scraper, superseded by the static-data pivot after
+  Cloudflare blocked live scraping. Nothing imports it; it's the only reason `playwright` is a
+  dependency.
+- `app/scraper/cleaner.py` — Casablanca-specific data prep, superseded by the config-driven
+  `app/ml/` pipeline. Still used only to rebuild the Casablanca lookup from the legacy CSV.
+
+**Placeholders.** `app/database/*` is intentionally empty — the service is stateless today.
+
+---
+
+## 8. Integration notes (for consuming microservices)
+
+- **Ships as a container** — `docker compose up --build` is the entire deployment. The image is
+  self-contained (code + dependencies); secrets come from the environment and model artifacts
+  from a mounted volume, so neither ever requires a rebuild.
+- **Stateless & horizontally scalable** — no DB, no session; the model loads into memory once
+  per process (`@lru_cache`). Run as many replicas as you like behind a load balancer.
+- **Call it server-to-server** with a shared API key. Keep the key server-side; never ship it to
+  a browser.
+- **The contract is the schema.** `app/api/schemas.py` is the single source of truth for the
+  request/response shape, and `/docs` publishes it as OpenAPI — generate a typed client from it
+  rather than hand-rolling one.
+- **Versioned base path** (`/api/v1`) so future breaking changes don't disrupt existing callers.
+
+---
+
+## 9. Roadmap
+
+- Replace the King County proxy with Moroccan price data (config + retrain).
+- Typology engine (GFA/unit, efficiency %, unit mix) to break GDV down per unit type.
+- Exit scenarios beyond sell-on-completion (long-term rent, short-term/Airbnb, hold) and their
+  yield metrics (NOI, Yield-on-Cost, cap value).
+- Rate limiting, and the persistence layer (`app/database/`) if saved simulations are needed.
+
+> Current geographic scope for the **cost/zoning** side is **Casablanca, Morocco**.

@@ -1,0 +1,39 @@
+# Code pipeline: on every push/PR — run the test suite, then prove the
+# production Docker image still builds. Model training is a separate,
+# deliberately decoupled workflow (train.yml).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    name: Test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        # ML-artifact tests skip cleanly on a bare clone (models are not in git);
+        # the engine math and API contract are fully covered regardless.
+        run: python -m pytest -v
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t daba-dar-api .

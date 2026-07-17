@@ -1,0 +1,18 @@
+{
+  "neighborhoods": {
+    "2 Mars": 21615.74,
+    "Autre": 10115.61,
+    "Belvédère": 10429.14,
+    "Bourgogne Ouest": 27470.59,
+    "CIL": 27142.86,
+    "Californie": 17333.33,
+    "Farah Essalam": 8156.94,
+    "Ghandi": 13008.13,
+    "Les Hôpitaux": 17615.38,
+    "Les princesses": 27500.0,
+    "Mandarona": 12460.06,
+    "Riviera": 22838.03
+  },
+  "city_median": 21615.74,
+  "n_points": 17
+}

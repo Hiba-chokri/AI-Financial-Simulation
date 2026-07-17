@@ -1,3 +1,13 @@
+"""
+LEGACY / NOT IN THE LIVE SERVICE — Sarouty.ma stealth scraper.
+
+Superseded by the Phase-1 pivot to a static dataset (Cloudflare blocked live scraping).
+Nothing in the API, engine, or ML pipeline imports this module; it is kept only as a
+reference for a future live-data pipeline. It is the sole reason `playwright` and
+`playwright-stealth` appear in requirements.txt.
+
+Do not wire this into the request path without revisiting the anti-bot/ToS constraints.
+"""
 import asyncio
 from typing import Optional
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page

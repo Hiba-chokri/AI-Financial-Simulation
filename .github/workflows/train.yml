@@ -1,0 +1,47 @@
+# Model pipeline (MLOps): train -> evaluate -> quality gate -> publish artifacts.
+#
+# Deliberately separate from ci.yml: code changes never retrain the model, and
+# retraining never rebuilds the image (the container mounts data/ at run time).
+#
+# Trigger it from the GitHub UI (Actions -> Train model -> Run workflow), or
+# uncomment the schedule for a weekly retrain.
+name: Train model
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 3 * * 1"   # Mondays 03:00 UTC
+
+jobs:
+  train:
+    name: Train, gate, publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Train (compares ridge / random forest / xgboost, keeps the winner)
+        run: python -m app.ml.train
+
+      - name: Quality gate — refuse to publish a model below the bar
+        run: python -m app.ml.quality_gate
+
+      - name: Render metrics comparison chart
+        run: python -m app.ml.plot_metrics
+
+      - name: Publish model + metadata + chart as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-${{ github.run_number }}
+          path: |
+            data/models/kc_pipeline.joblib
+            data/models/kc_pipeline_meta.json
+            data/models/metrics_comparison.png
+          retention-days: 90

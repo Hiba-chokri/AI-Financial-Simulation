@@ -1,0 +1,21 @@
+# Daba.Dar — DEVELOPMENT dependencies (everything the team uses locally).
+# Includes the runtime set, then adds tooling the production container doesn't need.
+-r requirements.txt
+
+# ── Local testing UI ──────────────────────────────────────────────────────────
+streamlit==1.50.0             # streamlit_app.py — dev interface, NOT the production frontend
+
+# ── Model evaluation / reporting ──────────────────────────────────────────────
+matplotlib==3.9.4             # model-comparison bar charts (app/ml/plot_metrics.py)
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+pytest==8.4.2
+httpx==0.28.1                 # required by Starlette's TestClient
+
+# ── Legacy scraper (app/scraper/sarouty.py — not used by the live service) ─────
+playwright==1.60.0
+playwright-stealth==2.0.3
+
+# ── Planned persistence layer (app/database/* — not yet implemented) ──────────
+# sqlalchemy==2.0.25
+# psycopg2-binary==2.9.9

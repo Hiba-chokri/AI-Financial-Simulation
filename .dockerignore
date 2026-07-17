@@ -1,0 +1,31 @@
+# Never send these to the Docker build context.
+
+# Secrets — the .env is injected at RUN time (docker --env-file), never baked in.
+.env
+
+# Virtual environments
+ven/
+.venv/
+env/
+
+# Data & model artifacts — mounted as a volume at run time, not baked into the image.
+data/
+
+# Development-only code and tooling
+tests/
+streamlit_app.py
+run_api.sh
+requirements-dev.txt
+
+# VCS / editor / caches
+.git/
+.gitignore
+.vscode/
+.idea/
+__pycache__/
+*.py[cod]
+*.log
+
+# Docs
+README.md
+*.md
