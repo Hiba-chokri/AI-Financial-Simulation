@@ -17,10 +17,24 @@ from app.core import config
 app = FastAPI(
     title="Daba.Dar Financial Simulation API",
     description=(
-        "Hyper-localized real-estate development valuation for Casablanca. "
-        "Computes construction cost (Capex), Gross Development Value (GDV), and profit."
+        "Hyper-localized real-estate development valuation for Casablanca. Given a plot "
+        "of land, autonomously designs a zoning-compliant building, prices the full "
+        "construction cost, estimates its Gross Development Value (GDV), and returns "
+        "net profit, margin, and ROI — a complete developer pro-forma in one call.\n\n"
+        "All endpoints except `/health` require an API key — see the **Authorize** "
+        "button above, header `X-API-Key`."
     ),
     version="1.0.0",
+    openapi_tags=[
+        {
+            "name": "meta",
+            "description": "Service status and reference data — no financial computation.",
+        },
+        {
+            "name": "valuation",
+            "description": "The core financial simulation: cost, revenue, and profit for a development project.",
+        },
+    ],
 )
 
 # --- CORS: only the configured origins may call the API from a browser ---

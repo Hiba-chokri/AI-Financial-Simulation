@@ -31,3 +31,12 @@ AUTH_ENABLED: bool = os.getenv("DABA_AUTH_ENABLED", "true").strip().lower() != "
 
 # Largest request body the API will accept (bytes). Simulation payloads are tiny.
 MAX_BODY_BYTES: int = int(os.getenv("DABA_MAX_BODY_BYTES", "100000"))
+
+# --- Live exchange rates (app/engine/currency.py) --------------------------
+# exchangerate-api.com key. Without it, currency conversion runs in degraded
+# "bootstrap" mode using the fixed rates baked into currency.py.
+EXCHANGE_RATE_API_KEY: str = os.getenv("DABA_EXCHANGE_RATE_API_KEY", "")
+
+# How often to refresh rates from the live API (seconds). Rates change slowly,
+# so this is intentionally coarse — every request does NOT trigger a fetch.
+FX_REFRESH_SECONDS: int = int(os.getenv("DABA_FX_REFRESH_SECONDS", str(6 * 3600)))

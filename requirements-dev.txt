@@ -10,7 +10,8 @@ matplotlib==3.9.4             # model-comparison bar charts (app/ml/plot_metrics
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 pytest==8.4.2
-httpx==0.28.1                 # required by Starlette's TestClient
+# httpx now ships via requirements.txt (live FX fetch) — Starlette's TestClient
+# reuses that same install, no separate pin needed here.
 
 # ── Legacy scraper (app/scraper/sarouty.py — not used by the live service) ─────
 playwright==1.60.0

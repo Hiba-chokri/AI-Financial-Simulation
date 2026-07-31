@@ -56,7 +56,7 @@ API — it validates input, calls the engines, and serializes the result.
 |--------|----------------|
 | `app/api/`      | HTTP layer — `routes.py`, `schemas.py` (request/response contracts), `security.py` (API-key auth). |
 | `app/core/`     | Configuration — `config.py` reads keys / CORS origins / limits from the environment. |
-| `app/engine/`   | Deterministic financial math — `capex.py` (cost engine), `matrix.py` (zoning rules), `currency.py` (MAD→USD/EUR), `gdv.py` (Casablanca lookup, the ML fallback). |
+| `app/engine/`   | Deterministic financial math — `capex.py` (cost engine), `matrix.py` (zoning rules), `currency.py` (MAD→USD/EUR, **live** rates), `gdv.py` (Casablanca lookup, the ML fallback). |
 | `app/ml/`       | The price-per-m² model pipeline (ingest → validate → features → train → predict), driven entirely by `config.py`. |
 | `tests/`        | Pytest smoke tests (engine math + API security). |
 | `app/scraper/`  | **Legacy** — a superseded live scraper + Casablanca data prep. Not used by the live service (see §7). |
@@ -126,6 +126,11 @@ uvicorn main:app --reload          # or: ./run_api.sh
 - Interactive docs (Swagger): **http://localhost:8000/docs** — click **Authorize**, paste your
   API key, then "Try it out".
 - Alternative docs (ReDoc): **http://localhost:8000/redoc**
+
+Every endpoint has a full description (what it does, how the ML fallback behaves, what each
+status code means), and every request/response field has its own description — hover any field
+in `/docs` to see what it means without reading the source. No need to ask what `ndv_mad` or
+`margin_pct` is; it's documented inline.
 
 ### Example request
 
@@ -201,9 +206,34 @@ both pipelines work from a bare clone.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET`  | `/`                       | public  | Service metadata. |
-| `GET`  | `/api/v1/health`          | public  | Liveness + whether the ML model is loaded. |
-| `GET`  | `/api/v1/neighborhoods`   | **key** | Locations the model was trained on. |
+| `GET`  | `/api/v1/health`          | public  | Liveness, ML model status, and FX rate freshness (`live`/`cached`/`bootstrap`). |
+| `GET`  | `/api/v1/neighborhoods`   | **key** | Locations the model was trained on — paginated (see below). |
 | `POST` | `/api/v1/simulate`        | **key** | Full valuation: cost → GDV → NDV → profit. |
+
+### `/neighborhoods` pagination
+
+The location list is paginated so the response stays flat regardless of dataset size —
+today it's 70 King County zipcodes, but nothing about the endpoint assumes that ceiling.
+
+```
+GET /api/v1/neighborhoods?page=1&page_size=50&search=980
+```
+
+| Param | Default | Notes |
+|-------|---------|-------|
+| `page` | 1 | 1-indexed |
+| `page_size` | 50 | max 500 |
+| `search` | — | optional case-insensitive substring filter |
+
+```json
+{
+  "items": ["98052", "98053", "98055"],
+  "total": 70, "page": 1, "page_size": 50,
+  "total_pages": 2, "has_next": true, "has_previous": false
+}
+```
+
+A page past the end returns an empty `items` list, never an error.
 
 **Security layers** (configured via `.env`, see `.env.example`):
 
@@ -217,6 +247,14 @@ both pipelines work from a bare clone.
 **GDV fallback:** if `gdv_method=ml` but no model is loaded, the API silently falls back to the
 Casablanca neighborhood lookup and reports `gdv_method: "lookup (ml_unavailable)"` in the
 response, so the caller always knows which valuator produced the number.
+
+**Live exchange rates:** MAD→USD/EUR rates are fetched from exchangerate-api.com and cached for
+`DABA_FX_REFRESH_SECONDS` (default 6h) — not hardcoded, so a real-world rate move is reflected
+without a deploy. If the provider is unreachable, the API keeps serving the **last successfully
+fetched rate** rather than failing the request; only on a cold start with no prior fetch (or no
+`DABA_EXCHANGE_RATE_API_KEY` configured) does it fall back to the fixed rates baked into
+`currency.py`. Check `GET /api/v1/health` → `fx_rates_source` (`live` / `cached` / `bootstrap`)
+to see which mode is active.
 
 ---
 

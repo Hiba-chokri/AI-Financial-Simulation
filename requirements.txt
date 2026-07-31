@@ -7,6 +7,7 @@ fastapi==0.128.8
 uvicorn==0.39.0
 pydantic==2.13.4
 python-dotenv==1.2.1          # loads .env (API keys, CORS origins) in app/core/config.py
+httpx==0.28.1                 # live exchange-rate fetch in app/engine/currency.py
 
 # ── ML inference (loading + running the trained pipeline) ─────────────────────
 pandas==2.3.3

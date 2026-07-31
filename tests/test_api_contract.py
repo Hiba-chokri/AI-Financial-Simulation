@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from app.engine.currency import RATES_FROM_MAD
+from app.engine.currency import get_rates
 
 LOOKUP_PATH = "data/models/gdv_price_per_m2.json"
 MODEL_PATH = "data/models/kc_pipeline.joblib"
@@ -90,6 +90,36 @@ def test_construction_details_items_are_well_formed(client, auth_headers):
 
 
 @needs_lookup
+def test_response_floats_are_rounded_to_3_decimal_places(client, auth_headers):
+    r = client.post(SIMULATE, json=BASE, headers=auth_headers)
+    d = r.json()
+    for field, value in d.items():
+        if isinstance(value, float):
+            assert value == round(value, 3), f"{field} has more than 3 decimals: {value}"
+    for item in d["construction_details"]:
+        for field, value in item.items():
+            if isinstance(value, float):
+                assert value == round(value, 3), f"construction_details.{field}: {value}"
+
+
+@needs_lookup
+def test_request_floats_are_rounded_on_input(client, auth_headers):
+    """A caller sending excessive precision gets it normalized before the
+    engine ever sees it — the response should reflect the rounded input,
+    not the raw one."""
+    messy = {**BASE, "land_price_mad": 4_500_000.123456789}
+    r = client.post(SIMULATE, json=messy, headers=auth_headers)
+    assert r.status_code == 200
+    # land price feeds straight into TDC; a rounded-to-3dp input must produce
+    # a TDC consistent with 4_500_000.123 landing in the total, not the raw tail.
+    clean = client.post(SIMULATE, json={**BASE, "land_price_mad": 4_500_000.123},
+                        headers=auth_headers)
+    assert r.json()["total_investment_mad"] == pytest.approx(
+        clean.json()["total_investment_mad"], abs=0.01
+    )
+
+
+@needs_lookup
 def test_minimal_request_works_with_defaults(client, auth_headers):
     """Only the 4 required fields — every optional field must default sensibly."""
     minimal = {"plot_m2": 500, "land_price_mad": 4_500_000,
@@ -147,11 +177,14 @@ def test_api_matches_direct_engine_call(client, auth_headers):
 def test_currency_converts_every_monetary_field(client, auth_headers, code):
     mad = client.post(SIMULATE, json={**BASE, "currency": "MAD"}, headers=auth_headers).json()
     conv = client.post(SIMULATE, json={**BASE, "currency": code}, headers=auth_headers).json()
-    rate = RATES_FROM_MAD[code]
+    rate = get_rates()[code]
 
+    # Both sides are independently rounded to 3 decimals at the API boundary
+    # (see RoundedModel), so a small absolute tolerance accounts for that
+    # rounding noise rather than expecting bit-exact equality.
     for field in ["total_investment_mad", "construction_subtotal_mad", "price_per_m2",
                   "gdv_mad", "ndv_mad", "soft_costs_mad", "overheads_mad", "net_profit_mad"]:
-        assert conv[field] == pytest.approx(mad[field] * rate, rel=1e-9), field
+        assert conv[field] == pytest.approx(mad[field] * rate, abs=0.01), field
     # dimensionless / physical fields must NOT be converted
     assert conv["margin_pct"] == pytest.approx(mad["margin_pct"], rel=1e-9)
     assert conv["roi_pct"] == pytest.approx(mad["roi_pct"], rel=1e-9)
